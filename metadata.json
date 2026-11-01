@@ -1,0 +1,6 @@
+{
+  "name": "PowerQuest MAT - Potenze nei Numeri Naturali",
+  "description": "Gioco didattico interattivo e banco di prova sulle potenze nei numeri naturali per studenti MAT del 1° anno con timer, vite, classifica e dashboard docente.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
