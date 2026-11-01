@@ -9,6 +9,7 @@ Esecuzione locale:
 """
 
 import streamlit as st
+import streamlit.components.v1 as components
 import random
 import time
 import os
@@ -683,21 +684,135 @@ elif st.session_state.view == "game":
     </div>
     """, unsafe_allow_html=True)
 
-    # 2. CONTATORE VISIVO DEL TIMER (Client-Side HTML/JS animato + Server Timeout)
-    timer_color = "#10b981" if remaining_q > 60 else ("#f59e0b" if remaining_q > 25 else "#ef4444")
-    progress_pct = max(0.0, min(100.0, (remaining_q / 120.0) * 100))
-
-    st.markdown(f"""
-    <div style="margin-bottom: 1.25rem;">
-        <div style="display: flex; justify-content: space-between; font-size: 0.85rem; font-weight: 700; margin-bottom: 0.35rem;">
-            <span style="color: {timer_color};">⏳ Tempo a disposizione: {remaining_q}s rimanenti</span>
-            <span style="color: #64748b;">Limite: 120s per esercizio</span>
+    # 2. CONTATORE VISIVO DEL TIMER (Client-Side HTML/JS che scorre in tempo reale)
+    timer_html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+    <meta charset="utf-8">
+    <style>
+    * {{
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+        font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    }}
+    body {{
+        background: transparent;
+        color: #f1f5f9;
+        overflow: hidden;
+    }}
+    .timer-wrap {{
+        padding: 2px 0 6px 0;
+    }}
+    .timer-meta {{
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 6px;
+    }}
+    .timer-pill {{
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-family: 'JetBrains Mono', monospace;
+        font-weight: 800;
+        font-size: 0.95rem;
+        padding: 4px 10px;
+        border-radius: 8px;
+        transition: all 0.3s ease;
+    }}
+    .timer-track {{
+        width: 100%;
+        height: 8px;
+        background: #1e293b;
+        border-radius: 9999px;
+        overflow: hidden;
+    }}
+    .timer-bar {{
+        height: 100%;
+        border-radius: 9999px;
+        transition: width 1s linear, background-color 0.4s ease;
+    }}
+    @keyframes pulseWarning {{
+        0%, 100% {{ opacity: 1; transform: scale(1); }}
+        50% {{ opacity: 0.75; transform: scale(1.02); }}
+    }}
+    .urgent {{
+        animation: pulseWarning 0.8s infinite;
+    }}
+    </style>
+    </head>
+    <body>
+    <div class="timer-wrap">
+        <div class="timer-meta">
+            <div id="pill" class="timer-pill" style="color: #10b981; background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.3);">
+                ⏳ <span id="secs">{remaining_q}</span>s rimanenti
+            </div>
+            <div style="font-size: 0.75rem; color: #94a3b8; font-weight: 600;">
+                2 Minuti (120s) per esercizio
+            </div>
         </div>
-        <div style="width: 100%; height: 8px; background: #1e293b; border-radius: 9999px; overflow: hidden;">
-            <div style="width: {progress_pct}%; height: 100%; background: {timer_color}; transition: width 1s linear; border-radius: 9999px;"></div>
+        <div class="timer-track">
+            <div id="bar" class="timer-bar" style="width: {(remaining_q / 120.0) * 100}%; background-color: #10b981;"></div>
         </div>
     </div>
-    """, unsafe_allow_html=True)
+
+    <script>
+    let remaining = {remaining_q};
+    const total = 120;
+    const secsEl = document.getElementById('secs');
+    const pillEl = document.getElementById('pill');
+    const barEl = document.getElementById('bar');
+
+    function renderTimer() {{
+        secsEl.textContent = remaining;
+        const pct = Math.max(0, Math.min(100, (remaining / total) * 100));
+        barEl.style.width = pct + '%';
+
+        if (remaining > 60) {{
+            barEl.style.backgroundColor = '#10b981';
+            pillEl.style.color = '#10b981';
+            pillEl.style.background = 'rgba(16, 185, 129, 0.15)';
+            pillEl.style.borderColor = 'rgba(16, 185, 129, 0.3)';
+            pillEl.classList.remove('urgent');
+        }} else if (remaining > 25) {{
+            barEl.style.backgroundColor = '#f59e0b';
+            pillEl.style.color = '#f59e0b';
+            pillEl.style.background = 'rgba(245, 158, 11, 0.15)';
+            pillEl.style.borderColor = 'rgba(245, 158, 11, 0.3)';
+            pillEl.classList.remove('urgent');
+        }} else {{
+            barEl.style.backgroundColor = '#ef4444';
+            pillEl.style.color = '#ef4444';
+            pillEl.style.background = 'rgba(239, 68, 68, 0.2)';
+            pillEl.style.borderColor = 'rgba(239, 68, 68, 0.5)';
+            pillEl.classList.add('urgent');
+        }}
+    }}
+
+    renderTimer();
+
+    const interval = setInterval(() => {{
+        remaining -= 1;
+        if (remaining <= 0) {{
+            remaining = 0;
+            renderTimer();
+            clearInterval(interval);
+            try {{
+                window.parent.location.reload();
+            }} catch(e) {{
+                // fallback
+            }}
+        }} else {{
+            renderTimer();
+        }}
+    }}, 1000);
+    </script>
+    </body>
+    </html>
+    """
+    components.html(timer_html, height=52)
 
     # Verifica scadenza tempo
     if remaining_q <= 0:
@@ -738,9 +853,30 @@ elif st.session_state.view == "game":
     letter_badges = ["A", "B", "C", "D"]
 
     def process_answer(chosen_idx):
-        is_correct = (chosen_idx == q["correct"])
         time_spent = int(time.time() - st.session_state.q_start_time)
         remaining = max(0, 120 - time_spent)
+
+        if remaining <= 0:
+            st.session_state.lives -= 1
+            st.session_state.streak = 0
+            st.session_state.last_feedback = {
+                "correct": False,
+                "timeout": True,
+                "points": 0,
+                "correct_ans": opts[q["correct"]],
+                "explanation": q["exp_it"] if lang == "it" else q["exp_en"]
+            }
+            st.session_state.answers_log.append({
+                "question": q_text,
+                "selected": "Tempo scaduto",
+                "correct": opts[q["correct"]],
+                "is_correct": False
+            })
+            st.session_state.view = "feedback"
+            st.rerun()
+            return
+
+        is_correct = (chosen_idx == q["correct"])
 
         if is_correct:
             streak = st.session_state.streak + 1
