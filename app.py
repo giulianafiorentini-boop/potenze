@@ -124,7 +124,7 @@ QUESTIONS_BANK = [
     # Proprietà: Potenza di potenza
     {"id": 40, "text_it": "Applica: (2³)² =", "text_en": "Apply: (2³)² =", "opts_it": ["2⁵", "2⁶", "2⁹", "4⁶"], "opts_en": ["2⁵", "2⁶", "2⁹", "4⁶"], "correct": 1, "exp_it": "Potenza di potenza: si moltiplicano gli esponenti (3×2=6) -> 2⁶.", "exp_en": "Multiply exponents (3×2=6) -> 2⁶."},
     {"id": 41, "text_it": "Semplifica: (3²)⁴ =", "text_en": "Simplify: (3²)⁴ =", "opts_it": ["3⁶", "3⁸", "3¹⁶", "9⁸"], "opts_en": ["3⁶", "3⁸", "3¹⁶", "9⁸"], "correct": 1, "exp_it": "2 × 4 = 8 -> 3⁸.", "exp_en": "2 × 4 = 8 -> 3⁸."},
-    {"id": 42, "text_it": "Calcola: [ (5²)³ ]² =", "text_en": "Calculate: [ (5²)³ ]² =", "opts_it": ["5⁷", "5¹²", "5¹⁸", "25¹²"], "opts_en": ["5⁷", "5¹²', "5¹⁸", "25¹²"], "correct": 1, "exp_it": "2 × 3 × 2 = 12 -> 5¹².", "exp_en": "2 × 3 × 2 = 12 -> 5¹²."},
+    {"id": 42, "text_it": "Calcola: [ (5²)³ ]² =", "text_en": "Calculate: [ (5²)³ ]² =", "opts_it": ["5⁷", "5¹²", "5¹⁸", "25¹²"], "opts_en": ["5⁷", "5¹²", "5¹⁸", "25¹²"], "correct": 1, "exp_it": "2 × 3 × 2 = 12 -> 5¹².", "exp_en": "2 × 3 × 2 = 12 -> 5¹²."},
     {"id": 43, "text_it": "Ordini di grandezza: (10³)² =", "text_en": "Orders of magnitude: (10³)² =", "opts_it": ["10⁵", "10⁶", "10⁹", "100⁶"], "opts_en": ["10⁵", "10⁶", "10⁹", "100⁶"], "correct": 1, "exp_it": "10³·² = 10⁶ (da kilo a mega).", "exp_en": "10³·² = 10⁶."},
     {"id": 44, "text_it": "Quanto vale (7⁴)⁰ ?", "text_en": "What is (7⁴)⁰ ?", "opts_it": ["0", "7", "1", "7⁴"], "opts_en": ["0", "7", "1", "7⁴"], "correct": 2, "exp_it": "7⁴·⁰ = 7⁰ = 1.", "exp_en": "7⁴·⁰ = 7⁰ = 1."},
 

@@ -250,6 +250,11 @@ app.delete('/api/attempts', (req: Request, res: Response) => {
   res.json({ success: true, message: 'All attempts cleared' });
 });
 
+// Serve app.py directly for copy/download in teacher dashboard
+app.get('/app.py', (_req: Request, res: Response) => {
+  res.sendFile(path.join(__dirname, 'app.py'));
+});
+
 // --- Frontend Serving (Vite dev middleware or static dist) ---
 async function startServer() {
   const isProduction = process.env.NODE_ENV === 'production';

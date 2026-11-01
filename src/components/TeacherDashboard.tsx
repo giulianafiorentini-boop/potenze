@@ -580,6 +580,14 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
               </div>
 
               <div className="flex items-center gap-2">
+                <a
+                  href="/app.py"
+                  download="app.py"
+                  className="flex items-center gap-1.5 rounded-xl bg-slate-800 border border-slate-700 px-3.5 py-1.5 text-xs font-bold text-slate-200 hover:text-white hover:bg-slate-700 transition"
+                >
+                  <Download className="h-3.5 w-3.5 text-amber-400" />
+                  <span>Scarica app.py</span>
+                </a>
                 <button
                   onClick={handleCopyPython}
                   className="flex items-center gap-1.5 rounded-xl bg-amber-500 px-3.5 py-1.5 text-xs font-bold text-slate-950 hover:bg-amber-400 transition"
