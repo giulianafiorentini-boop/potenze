@@ -1,5 +1,23 @@
 [
   {
+    "id": "test-realtime-1",
+    "studentName": "Simone",
+    "studentSurname": "Verdi",
+    "language": "it",
+    "score": 0,
+    "correctAnswers": 0,
+    "questionsAnswered": 0,
+    "timeoutsCount": 1,
+    "totalQuestions": 12,
+    "livesRemaining": 2,
+    "totalTimeSeconds": 120,
+    "completed": false,
+    "status": "In corso (0/12 risposte, 1 timeout)",
+    "timestamp": "2026-11-01T15:05:07.039Z",
+    "formattedDate": "01/11/2026, 15:05",
+    "answers": []
+  },
+  {
     "id": "att-demo-1",
     "studentName": "Marco",
     "studentSurname": "Rossi",

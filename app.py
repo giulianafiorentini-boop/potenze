@@ -210,19 +210,47 @@ def init_db():
         c = conn.cursor()
         c.execute('''
             CREATE TABLE IF NOT EXISTS attempts (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                attempt_id TEXT PRIMARY KEY,
                 student_name TEXT NOT NULL,
                 student_surname TEXT NOT NULL,
                 language TEXT NOT NULL,
                 score INTEGER NOT NULL,
                 correct_answers INTEGER NOT NULL,
-                total_questions INTEGER NOT NULL,
-                lives_remaining INTEGER NOT NULL,
-                total_time_seconds INTEGER NOT NULL,
-                completed BOOLEAN NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                questions_answered INTEGER NOT NULL DEFAULT 0,
+                timeouts_count INTEGER NOT NULL DEFAULT 0,
+                total_questions INTEGER NOT NULL DEFAULT 12,
+                lives_remaining INTEGER NOT NULL DEFAULT 3,
+                total_time_seconds INTEGER NOT NULL DEFAULT 0,
+                completed BOOLEAN NOT NULL DEFAULT 0,
+                status TEXT NOT NULL DEFAULT 'In corso',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         ''')
+        # Verifica se la tabella esistente necessita di migrazione colonne
+        c.execute("PRAGMA table_info(attempts)")
+        cols = [col[1] for col in c.fetchall()]
+        if 'attempt_id' not in cols or 'questions_answered' not in cols:
+            c.execute("DROP TABLE IF EXISTS attempts")
+            c.execute('''
+                CREATE TABLE attempts (
+                    attempt_id TEXT PRIMARY KEY,
+                    student_name TEXT NOT NULL,
+                    student_surname TEXT NOT NULL,
+                    language TEXT NOT NULL,
+                    score INTEGER NOT NULL,
+                    correct_answers INTEGER NOT NULL,
+                    questions_answered INTEGER NOT NULL DEFAULT 0,
+                    timeouts_count INTEGER NOT NULL DEFAULT 0,
+                    total_questions INTEGER NOT NULL DEFAULT 12,
+                    lives_remaining INTEGER NOT NULL DEFAULT 3,
+                    total_time_seconds INTEGER NOT NULL DEFAULT 0,
+                    completed BOOLEAN NOT NULL DEFAULT 0,
+                    status TEXT NOT NULL DEFAULT 'In corso',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
         conn.commit()
         conn.close()
     except Exception as e:
@@ -236,86 +264,127 @@ def init_db():
         except Exception:
             pass
 
-def save_attempt(name, surname, language, score, correct, total, lives, total_time, completed):
-    """Salva il tentativo sia in SQLite che in JSON con atomic flush per massima affidabilità."""
+def save_or_update_attempt(attempt_id, name, surname, language, score, correct, answered, timeouts, total, lives, total_time, completed, status):
+    """Salva o aggiorna istantaneamente il tentativo su SQLite e JSON in tempo reale."""
     created_at_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    formatted_date = datetime.now().strftime("%d/%m/%Y %H:%M")
 
-    # 1. Salvataggio su SQLite
+    # 1. Salvataggio / Aggiornamento Atomico su SQLite
     try:
         conn = sqlite3.connect(DB_FILE, check_same_thread=False)
         c = conn.cursor()
         c.execute('''
             INSERT INTO attempts (
-                student_name, student_surname, language, score,
-                correct_answers, total_questions, lives_remaining,
-                total_time_seconds, completed, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                attempt_id, student_name, student_surname, language, score,
+                correct_answers, questions_answered, timeouts_count, total_questions,
+                lives_remaining, total_time_seconds, completed, status, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(attempt_id) DO UPDATE SET
+                score = excluded.score,
+                correct_answers = excluded.correct_answers,
+                questions_answered = excluded.questions_answered,
+                timeouts_count = excluded.timeouts_count,
+                lives_remaining = excluded.lives_remaining,
+                total_time_seconds = excluded.total_time_seconds,
+                completed = excluded.completed,
+                status = excluded.status,
+                updated_at = excluded.updated_at
         ''', (
-            name.strip(), surname.strip(), language, int(score),
-            int(correct), int(total), int(lives), int(total_time),
-            bool(completed), created_at_str
+            str(attempt_id), name.strip(), surname.strip(), language, int(score),
+            int(correct), int(answered), int(timeouts), int(total), int(lives),
+            int(total_time), bool(completed), str(status), created_at_str, created_at_str
         ))
         conn.commit()
         conn.close()
     except Exception as e:
-        print(f"Error SQLite save: {e}")
+        print(f"Error SQLite save_or_update: {e}")
 
-    # 2. Salvataggio su JSON Backup (visibile ovunque su Streamlit Cloud)
+    # 2. Salvataggio / Aggiornamento in-place su JSON Backup
     try:
         records = []
         if os.path.exists(JSON_BACKUP):
             with open(JSON_BACKUP, "r", encoding="utf-8") as f:
                 records = json.load(f)
-        record = {
+
+        record_data = {
+            "attempt_id": str(attempt_id),
             "student_name": name.strip(),
             "student_surname": surname.strip(),
             "language": language,
             "score": int(score),
             "correct_answers": int(correct),
+            "questions_answered": int(answered),
+            "timeouts_count": int(timeouts),
             "total_questions": int(total),
             "lives_remaining": int(lives),
             "total_time_seconds": int(total_time),
             "completed": bool(completed),
-            "created_at": created_at_str,
-            "formatted_date": formatted_date
+            "status": str(status),
+            "created_at": created_at_str
         }
-        records.insert(0, record)
+
+        found = False
+        for i, r in enumerate(records):
+            if r.get("attempt_id") == str(attempt_id):
+                record_data["created_at"] = r.get("created_at", created_at_str)
+                records[i] = record_data
+                found = True
+                break
+
+        if not found:
+            records.insert(0, record_data)
+
         with open(JSON_BACKUP, "w", encoding="utf-8") as f:
             json.dump(records, f, indent=2)
     except Exception as e:
-        print(f"Error JSON backup: {e}")
+        print(f"Error JSON backup update: {e}")
+
+def save_attempt(name, surname, language, score, correct, total, lives, total_time, completed):
+    """Wrapper di retrocompatibilità per save_or_update_attempt."""
+    att_id = st.session_state.get("attempt_id") or f"att_{int(time.time())}_{random.randint(100, 999)}"
+    answered = st.session_state.get("answered_count", 0)
+    timeouts = st.session_state.get("timeouts_count", 0)
+    status = "Completato" if completed else "Interrotto"
+    save_or_update_attempt(
+        attempt_id=att_id,
+        name=name,
+        surname=surname,
+        language=language,
+        score=score,
+        correct=correct,
+        answered=answered,
+        timeouts=timeouts,
+        total=total,
+        lives=lives,
+        total_time=total_time,
+        completed=completed,
+        status=status
+    )
 
 def get_all_attempts():
-    """Recupera tutti i tentativi combinando SQLite e JSON, garantendo che nessun tentativo venga perso."""
-    records = []
-    
-    # Prova da SQLite
+    """Recupera tutti i tentativi con ordine decrescente (più recenti e punteggio)."""
     try:
         if os.path.exists(DB_FILE):
             conn = sqlite3.connect(DB_FILE, check_same_thread=False)
-            df_sql = pd.read_sql_query("SELECT * FROM attempts ORDER BY score DESC, total_time_seconds ASC", conn)
+            df_sql = pd.read_sql_query("SELECT * FROM attempts ORDER BY created_at DESC", conn)
             conn.close()
             if not df_sql.empty:
                 return df_sql
     except Exception:
         pass
 
-    # Fallback su JSON
     try:
         if os.path.exists(JSON_BACKUP):
             with open(JSON_BACKUP, "r", encoding="utf-8") as f:
                 records = json.load(f)
             if records:
-                df = pd.DataFrame(records)
-                return df.sort_values(by=["score", "total_time_seconds"], ascending=[False, True])
+                return pd.DataFrame(records)
     except Exception:
         pass
 
     return pd.DataFrame(columns=[
-        "student_name", "student_surname", "language", "score",
-        "correct_answers", "total_questions", "lives_remaining",
-        "total_time_seconds", "completed", "created_at"
+        "attempt_id", "student_name", "student_surname", "language", "score",
+        "correct_answers", "questions_answered", "timeouts_count", "total_questions",
+        "lives_remaining", "total_time_seconds", "completed", "status", "created_at"
     ])
 
 init_db()
@@ -422,6 +491,12 @@ if "score" not in st.session_state:
     st.session_state.score = 0
 if "streak" not in st.session_state:
     st.session_state.streak = 0
+if "answered_count" not in st.session_state:
+    st.session_state.answered_count = 0
+if "timeouts_count" not in st.session_state:
+    st.session_state.timeouts_count = 0
+if "attempt_id" not in st.session_state:
+    st.session_state.attempt_id = ""
 if "q_start_time" not in st.session_state:
     st.session_state.q_start_time = time.time()
 if "total_start_time" not in st.session_state:
@@ -434,16 +509,36 @@ if "attempt_saved" not in st.session_state:
     st.session_state.attempt_saved = False
 
 def start_new_game():
+    st.session_state.attempt_id = f"att_{int(time.time())}_{random.randint(100, 999)}"
     st.session_state.game_questions = random.sample(QUESTIONS_BANK, 12)
     st.session_state.current_q_idx = 0
     st.session_state.lives = 3
     st.session_state.score = 0
     st.session_state.streak = 0
+    st.session_state.answered_count = 0
+    st.session_state.timeouts_count = 0
     st.session_state.answers_log = []
     st.session_state.last_feedback = None
     st.session_state.total_start_time = time.time()
     st.session_state.q_start_time = time.time()
-    st.session_state.attempt_saved = False
+    st.session_state.attempt_saved = True
+
+    # SALVATAGGIO IMMEDIATO ALL'AVVIO: traccia l'alunno fin dal primo secondo (anche se risponde a 0 domande!)
+    save_or_update_attempt(
+        attempt_id=st.session_state.attempt_id,
+        name=st.session_state.student_name,
+        surname=st.session_state.student_surname,
+        language=st.session_state.language,
+        score=0,
+        correct=0,
+        answered=0,
+        timeouts=0,
+        total=12,
+        lives=3,
+        total_time=0,
+        completed=False,
+        status="In corso (0/12 risposte date)"
+    )
     st.session_state.view = "game"
 
 # --- SIDEBAR: NAVIGAZIONE, DOCENTE E INFO ---
@@ -478,7 +573,7 @@ if show_teacher_dash:
         <span class="mat-badge">Pannello di Amministrazione</span>
         <h1 style="margin-top: 0.5rem;">📊 Dashboard e Registro Docente MAT</h1>
         <p style="color: #94a3b8; font-size: 0.9rem;">
-            I tentativi degli studenti vengono registrati automaticamente dal server sia su database SQLite che su file JSON permanente.
+            I tentativi degli studenti vengono registrati istantaneamente in tempo reale: sono visibili anche gli alunni che hanno risposto a 0 domande o lasciato scadere il tempo.
         </p>
     </div>
     """, unsafe_allow_html=True)
@@ -491,7 +586,7 @@ if show_teacher_dash:
     df = get_all_attempts()
 
     if df.empty:
-        st.info("ℹ️ Nessun tentativo registrato finora. Gli esiti appariranno qui automaticamente appena gli studenti concludono una partita.")
+        st.info("ℹ️ Nessun tentativo registrato finora. Gli esiti appariranno qui automaticamente appena gli studenti avviano una sessione.")
     else:
         # Metriche di classe
         total_attempts = len(df)
@@ -503,7 +598,7 @@ if show_teacher_dash:
         with m1:
             st.markdown(f"""
             <div class="metric-box">
-                <div class="metric-lbl">Tentativi Totali</div>
+                <div class="metric-lbl">Tentativi Registrati</div>
                 <div class="metric-val">{total_attempts}</div>
             </div>
             """, unsafe_allow_html=True)
@@ -530,24 +625,34 @@ if show_teacher_dash:
             """, unsafe_allow_html=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
-        st.subheader("🏆 Classifica Generale (Leaderboard Ordinata)")
+        st.subheader("🏆 Registro Completo Alunni (Tracciamento Risposte e Timeout)")
         
         df_display = df.copy()
         if 'student_name' in df_display and 'student_surname' in df_display:
             df_display['Studente'] = df_display['student_name'] + " " + df_display['student_surname']
         
-        if 'completed' in df_display:
-            df_display['Esito'] = df_display['completed'].apply(lambda x: "Completato 12/12 ✅" if x else "Vite Finite ❌")
+        if 'questions_answered' not in df_display:
+            df_display['questions_answered'] = 0
+        if 'timeouts_count' not in df_display:
+            df_display['timeouts_count'] = 0
+        if 'status' not in df_display:
+            df_display['status'] = df_display.get('completed', False).apply(lambda x: "Completato 12/12 ✅" if x else "Vite Finite ❌")
+
+        df_display['Domande Risposte'] = df_display['questions_answered'].astype(str) + " / 12"
+        df_display['Risposte Esatte'] = df_display['correct_answers'].astype(str) + " / 12"
+        df_display['Timeout'] = df_display['timeouts_count'].astype(str)
         
         cols_to_show = []
         rename_dict = {}
         for c, label in [
             ('Studente', 'Alunno'),
             ('score', 'Punteggio'),
-            ('correct_answers', 'Risposte Corrette (su 12)'),
+            ('Domande Risposte', 'Quesiti Risposti'),
+            ('Risposte Esatte', 'Risposte Esatte'),
+            ('Timeout', 'Timeout (Scaduti)'),
             ('lives_remaining', 'Vite Rimaste'),
             ('total_time_seconds', 'Tempo (s)'),
-            ('Esito', 'Esito Partita'),
+            ('status', 'Stato / Esito'),
             ('created_at', 'Data / Ora')
         ]:
             if c in df_display.columns:
@@ -818,7 +923,14 @@ elif st.session_state.view == "game":
     if remaining_q <= 0:
         st.session_state.lives -= 1
         st.session_state.streak = 0
+        st.session_state.timeouts_count += 1
         current_opts = q["opts_it"] if lang == "it" else q["opts_en"]
+        st.session_state.answers_log.append({
+            "question": q.get("text_it" if lang == "it" else "text_en"),
+            "selected": "Tempo scaduto (Timeout)",
+            "correct": current_opts[q["correct"]],
+            "is_correct": False
+        })
         st.session_state.last_feedback = {
             "correct": False,
             "timeout": True,
@@ -826,6 +938,25 @@ elif st.session_state.view == "game":
             "correct_ans": current_opts[q["correct"]],
             "explanation": q["exp_it"] if lang == "it" else q["exp_en"]
         }
+        tot_time = int(time.time() - st.session_state.total_start_time)
+        correct_count = sum(1 for a in st.session_state.answers_log if a.get("is_correct"))
+        is_game_over = (st.session_state.lives <= 0)
+        status_msg = "Game Over (Vite finite per timeout)" if is_game_over else f"In corso ({st.session_state.answered_count}/12 risposte, {st.session_state.timeouts_count} timeout)"
+        save_or_update_attempt(
+            attempt_id=st.session_state.attempt_id,
+            name=st.session_state.student_name,
+            surname=st.session_state.student_surname,
+            language=st.session_state.language,
+            score=st.session_state.score,
+            correct=correct_count,
+            answered=st.session_state.answered_count,
+            timeouts=st.session_state.timeouts_count,
+            total=12,
+            lives=max(0, st.session_state.lives),
+            total_time=tot_time,
+            completed=False,
+            status=status_msg
+        )
         st.session_state.view = "feedback"
         st.rerun()
 
@@ -848,7 +979,6 @@ elif st.session_state.view == "game":
     """, unsafe_allow_html=True)
 
     # 4. PULSANTI RISPOSTA DIRETTI (A, B, C, D) CON INVIO IMMEDIATO E SENZA DESINCRONIZZAZIONE
-    # Risolve definitivamente l'errore del tasto "Invia Risposta" che non prendeva l'opzione
     col1, col2 = st.columns(2, gap="medium")
     letter_badges = ["A", "B", "C", "D"]
 
@@ -859,6 +989,7 @@ elif st.session_state.view == "game":
         if remaining <= 0:
             st.session_state.lives -= 1
             st.session_state.streak = 0
+            st.session_state.timeouts_count += 1
             st.session_state.last_feedback = {
                 "correct": False,
                 "timeout": True,
@@ -868,15 +999,35 @@ elif st.session_state.view == "game":
             }
             st.session_state.answers_log.append({
                 "question": q_text,
-                "selected": "Tempo scaduto",
+                "selected": "Tempo scaduto (Timeout)",
                 "correct": opts[q["correct"]],
                 "is_correct": False
             })
+            tot_time = int(time.time() - st.session_state.total_start_time)
+            correct_count = sum(1 for a in st.session_state.answers_log if a.get("is_correct"))
+            is_game_over = (st.session_state.lives <= 0)
+            status_msg = "Game Over (Vite finite per timeout)" if is_game_over else f"In corso ({st.session_state.answered_count}/12 risposte, {st.session_state.timeouts_count} timeout)"
+            save_or_update_attempt(
+                attempt_id=st.session_state.attempt_id,
+                name=st.session_state.student_name,
+                surname=st.session_state.student_surname,
+                language=st.session_state.language,
+                score=st.session_state.score,
+                correct=correct_count,
+                answered=st.session_state.answered_count,
+                timeouts=st.session_state.timeouts_count,
+                total=12,
+                lives=max(0, st.session_state.lives),
+                total_time=tot_time,
+                completed=False,
+                status=status_msg
+            )
             st.session_state.view = "feedback"
             st.rerun()
             return
 
         is_correct = (chosen_idx == q["correct"])
+        st.session_state.answered_count += 1
 
         if is_correct:
             streak = st.session_state.streak + 1
@@ -908,13 +1059,42 @@ elif st.session_state.view == "game":
             "correct": opts[q["correct"]],
             "is_correct": is_correct
         })
+
+        # Aggiornamento atomico immediato del tentativo
+        tot_time = int(time.time() - st.session_state.total_start_time)
+        correct_count = sum(1 for a in st.session_state.answers_log if a.get("is_correct"))
+        is_game_over = (st.session_state.lives <= 0)
+        is_finished = (st.session_state.current_q_idx + 1 >= 12)
+
+        if is_game_over:
+            status_msg = f"Game Over (Vite esaurite alla dom. {st.session_state.current_q_idx + 1})"
+        elif is_finished:
+            status_msg = f"Completato ({correct_count}/12 corrette)"
+        else:
+            status_msg = f"In corso ({st.session_state.answered_count}/12 risposte date)"
+
+        save_or_update_attempt(
+            attempt_id=st.session_state.attempt_id,
+            name=st.session_state.student_name,
+            surname=st.session_state.student_surname,
+            language=st.session_state.language,
+            score=st.session_state.score,
+            correct=correct_count,
+            answered=st.session_state.answered_count,
+            timeouts=st.session_state.timeouts_count,
+            total=12,
+            lives=max(0, st.session_state.lives),
+            total_time=tot_time,
+            completed=is_finished and not is_game_over,
+            status=status_msg
+        )
+
         st.session_state.view = "feedback"
         st.rerun()
 
     for idx, opt_text in enumerate(opts):
         target_col = col1 if idx % 2 == 0 else col2
         with target_col:
-            # Pulsante singolo per ogni opzione: click e risposta istantanea!
             btn_label = f"{letter_badges[idx]} )   {opt_text}"
             if st.button(btn_label, key=f"ans_btn_{q_idx}_{idx}", use_container_width=True):
                 process_answer(idx)
@@ -928,22 +1108,26 @@ elif st.session_state.view == "feedback":
     is_game_over = (st.session_state.lives <= 0)
     is_finished = (st.session_state.current_q_idx + 1 >= 12)
 
-    # Salvataggio automatico IMMEDIATO se la partita finisce (Game Over o Vittoria)
-    if (is_game_over or is_finished) and not st.session_state.attempt_saved:
+    # Salvataggio automatico se la partita si chiude
+    if (is_game_over or is_finished):
         tot_time = int(time.time() - st.session_state.total_start_time)
         correct_count = sum(1 for a in st.session_state.answers_log if a.get("is_correct"))
-        save_attempt(
-            st.session_state.student_name,
-            st.session_state.student_surname,
-            st.session_state.language,
-            st.session_state.score,
-            correct_count,
-            12,
-            max(0, st.session_state.lives),
-            tot_time,
-            not is_game_over
+        status_msg = f"Completato ({correct_count}/12 corrette)" if is_finished and not is_game_over else "Game Over (Vite esaurite)"
+        save_or_update_attempt(
+            attempt_id=st.session_state.attempt_id,
+            name=st.session_state.student_name,
+            surname=st.session_state.student_surname,
+            language=st.session_state.language,
+            score=st.session_state.score,
+            correct=correct_count,
+            answered=st.session_state.answered_count,
+            timeouts=st.session_state.timeouts_count,
+            total=12,
+            lives=max(0, st.session_state.lives),
+            total_time=tot_time,
+            completed=is_finished and not is_game_over,
+            status=status_msg
         )
-        st.session_state.attempt_saved = True
 
     if fb["correct"]:
         st.markdown(f"""

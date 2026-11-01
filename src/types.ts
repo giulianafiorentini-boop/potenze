@@ -40,10 +40,13 @@ export interface GameAttempt {
   language: Language;
   score: number;
   correctAnswers: number;
+  questionsAnswered?: number;
+  timeoutsCount?: number;
   totalQuestions: number;
   livesRemaining: number;
   totalTimeSeconds: number;
   completed: boolean; // true if finished all 12 questions, false if game over
+  status?: string;
   timestamp: string; // ISO string
   formattedDate: string;
   answers: StudentAnswer[];

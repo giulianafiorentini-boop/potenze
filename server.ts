@@ -69,18 +69,22 @@ app.post('/api/teacher/auth', (req: Request, res: Response) => {
   }
 });
 
-// Submit a new game attempt
+// Submit or update a game attempt (real-time tracking from question 0)
 app.post('/api/attempts', (req: Request, res: Response) => {
   const {
+    id,
     studentName,
     studentSurname,
     language = 'it',
     score = 0,
     correctAnswers = 0,
+    questionsAnswered = 0,
+    timeoutsCount = 0,
     totalQuestions = 12,
-    livesRemaining = 0,
+    livesRemaining = 3,
     totalTimeSeconds = 0,
     completed = false,
+    status = 'in_progress',
     answers = []
   } = req.body;
 
@@ -90,19 +94,27 @@ app.post('/api/attempts', (req: Request, res: Response) => {
   }
 
   const now = new Date();
-  const attempt = {
-    id: `att_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+  const attempts = getAttempts();
+  const attemptId = id || `att_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+
+  const existingIndex = attempts.findIndex((a: any) => a.id === attemptId);
+
+  const attemptData = {
+    id: attemptId,
     studentName: String(studentName).trim(),
     studentSurname: String(studentSurname).trim(),
     language,
     score: Number(score) || 0,
     correctAnswers: Number(correctAnswers) || 0,
+    questionsAnswered: Number(questionsAnswered) || (Array.isArray(answers) ? answers.filter((a: any) => a.selectedOption !== 'Tempo scaduto' && a.selectedOption !== 'Time expired').length : 0),
+    timeoutsCount: Number(timeoutsCount) || (Array.isArray(answers) ? answers.filter((a: any) => a.selectedOption === 'Tempo scaduto' || a.selectedOption === 'Time expired').length : 0),
     totalQuestions: Number(totalQuestions) || 12,
-    livesRemaining: Number(livesRemaining) || 0,
+    livesRemaining: Number(livesRemaining) >= 0 ? Number(livesRemaining) : 0,
     totalTimeSeconds: Number(totalTimeSeconds) || 0,
     completed: Boolean(completed),
-    timestamp: now.toISOString(),
-    formattedDate: now.toLocaleString('it-IT', {
+    status: String(status),
+    timestamp: existingIndex >= 0 ? attempts[existingIndex].timestamp : now.toISOString(),
+    formattedDate: existingIndex >= 0 ? attempts[existingIndex].formattedDate : now.toLocaleString('it-IT', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
@@ -112,8 +124,12 @@ app.post('/api/attempts', (req: Request, res: Response) => {
     answers: Array.isArray(answers) ? answers : []
   };
 
-  const attempts = getAttempts();
-  attempts.unshift(attempt); // latest first
+  if (existingIndex >= 0) {
+    attempts[existingIndex] = attemptData;
+  } else {
+    attempts.unshift(attemptData); // latest first
+  }
+
   const saved = saveAttempts(attempts);
 
   if (!saved) {
@@ -121,7 +137,7 @@ app.post('/api/attempts', (req: Request, res: Response) => {
     return;
   }
 
-  res.status(201).json({ success: true, attempt });
+  res.status(201).json({ success: true, attempt: attemptData });
 });
 
 // Public Leaderboard: returns top 50 ranked attempts

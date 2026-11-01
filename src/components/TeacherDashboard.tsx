@@ -464,7 +464,9 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                   <tr>
                     <th className="py-3 px-4">{t.student}</th>
                     <th className="py-3 px-4">{t.score}</th>
-                    <th className="py-3 px-4">{t.accuracy}</th>
+                    <th className="py-3 px-4">{isItalian ? 'Quesiti Risposti' : 'Answered'}</th>
+                    <th className="py-3 px-4">{isItalian ? 'Esatte' : 'Correct'}</th>
+                    <th className="py-3 px-4">{isItalian ? 'Timeout' : 'Timeouts'}</th>
                     <th className="py-3 px-4">{t.lives}</th>
                     <th className="py-3 px-4">{t.totalTime}</th>
                     <th className="py-3 px-4">{t.status}</th>
@@ -473,44 +475,67 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60 font-medium">
-                  {filteredAttempts.map((item) => (
-                    <tr key={item.id} className="hover:bg-slate-800/40 transition">
-                      <td className="py-3.5 px-4 font-bold text-white">
-                        {item.studentName} {item.studentSurname}
-                      </td>
-                      <td className="py-3.5 px-4 font-mono-math font-bold text-amber-300">
-                        {item.score} pt
-                      </td>
-                      <td className="py-3.5 px-4">
-                        {item.correctAnswers} / {item.totalQuestions}
-                      </td>
-                      <td className="py-3.5 px-4">
-                        {item.livesRemaining} / 3
-                      </td>
-                      <td className="py-3.5 px-4 font-mono-math">
-                        {item.totalTimeSeconds}s
-                      </td>
-                      <td className="py-3.5 px-4">
-                        {item.completed ? (
-                          <span className="text-emerald-400 font-semibold">12/12</span>
-                        ) : (
-                          <span className="text-rose-400 font-semibold">Interrotto</span>
-                        )}
-                      </td>
-                      <td className="py-3.5 px-4 text-slate-400">
-                        {item.formattedDate}
-                      </td>
-                      <td className="py-3.5 px-4 text-right">
-                        <button
-                          onClick={() => setSelectedAttempt(item)}
-                          className="inline-flex items-center gap-1 rounded-lg bg-slate-800 px-2.5 py-1 text-slate-200 hover:text-white hover:bg-slate-700 transition"
-                        >
-                          <Eye className="h-3.5 w-3.5 text-amber-400" />
-                          <span>Dettaglio</span>
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                  {filteredAttempts.map((item) => {
+                    const answered = item.questionsAnswered ?? 0;
+                    const timeouts = item.timeoutsCount ?? 0;
+                    const statusText = item.status || (item.completed ? (isItalian ? 'Completato 12/12' : 'Completed 12/12') : (isItalian ? 'Interrotto' : 'Incomplete'));
+                    const isCompleted = item.completed;
+
+                    return (
+                      <tr key={item.id} className="hover:bg-slate-800/40 transition">
+                        <td className="py-3.5 px-4 font-bold text-white">
+                          {item.studentName} {item.studentSurname}
+                        </td>
+                        <td className="py-3.5 px-4 font-mono-math font-bold text-amber-300">
+                          {item.score} pt
+                        </td>
+                        <td className="py-3.5 px-4 font-mono-math">
+                          <span className={answered === 0 ? "text-rose-400 font-bold" : "text-slate-200"}>
+                            {answered} / {item.totalQuestions}
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-4 font-mono-math text-emerald-400 font-semibold">
+                          {item.correctAnswers} / {item.totalQuestions}
+                        </td>
+                        <td className="py-3.5 px-4 font-mono-math">
+                          <span className={timeouts > 0 ? "text-amber-400 font-bold" : "text-slate-400"}>
+                            {timeouts}
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <span className={item.livesRemaining === 0 ? "text-rose-400 font-bold" : "text-slate-300"}>
+                            {item.livesRemaining} / 3
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-4 font-mono-math">
+                          {Math.floor(item.totalTimeSeconds / 60)}m {item.totalTimeSeconds % 60}s
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold ${
+                            isCompleted 
+                              ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30" 
+                              : item.livesRemaining === 0 
+                                ? "bg-rose-500/15 text-rose-400 border border-rose-500/30"
+                                : "bg-amber-500/15 text-amber-300 border border-amber-500/30"
+                          }`}>
+                            {statusText}
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-4 text-slate-400">
+                          {item.formattedDate}
+                        </td>
+                        <td className="py-3.5 px-4 text-right">
+                          <button
+                            onClick={() => setSelectedAttempt(item)}
+                            className="inline-flex items-center gap-1 rounded-lg bg-slate-800 px-2.5 py-1 text-slate-200 hover:text-white hover:bg-slate-700 transition"
+                          >
+                            <Eye className="h-3.5 w-3.5 text-amber-400" />
+                            <span>Dettaglio</span>
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -694,9 +719,17 @@ def init_db():
                 <h3 className="text-lg font-bold text-white">
                   {selectedAttempt.studentName} {selectedAttempt.studentSurname}
                 </h3>
-                <p className="text-xs text-slate-400">
-                  {selectedAttempt.formattedDate} • Punteggio: <strong className="text-amber-400">{selectedAttempt.score} pt</strong>
-                </p>
+                <div className="flex flex-wrap items-center gap-2 mt-1 text-xs text-slate-400">
+                  <span>{selectedAttempt.formattedDate}</span>
+                  <span>•</span>
+                  <span>Punteggio: <strong className="text-amber-400">{selectedAttempt.score} pt</strong></span>
+                  <span>•</span>
+                  <span>Risposte date: <strong className="text-slate-200">{selectedAttempt.questionsAnswered ?? 0} / {selectedAttempt.totalQuestions}</strong></span>
+                  <span>•</span>
+                  <span>Timeout: <strong className="text-amber-400">{selectedAttempt.timeoutsCount ?? 0}</strong></span>
+                  <span>•</span>
+                  <span className="text-emerald-400 font-semibold">{selectedAttempt.status || (selectedAttempt.completed ? 'Completato 12/12' : 'Interrotto')}</span>
+                </div>
               </div>
               <button
                 onClick={() => setSelectedAttempt(null)}

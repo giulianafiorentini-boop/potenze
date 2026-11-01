@@ -11,6 +11,7 @@ interface GameScreenProps {
   studentSurname: string;
   language: Language;
   onFinishGame: (finalScore: number, answers: StudentAnswer[], livesLeft: number, isVictory: boolean) => void;
+  onProgressUpdate?: (score: number, answers: StudentAnswer[], livesLeft: number, isGameOver: boolean) => void;
 }
 
 export const GameScreen: React.FC<GameScreenProps> = ({
@@ -18,7 +19,8 @@ export const GameScreen: React.FC<GameScreenProps> = ({
   studentName,
   studentSurname,
   language,
-  onFinishGame
+  onFinishGame,
+  onProgressUpdate
 }) => {
   const t = getTranslation(language);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -69,7 +71,8 @@ export const GameScreen: React.FC<GameScreenProps> = ({
       explanation: explanationText
     };
 
-    setAnswersLog((prev) => [...prev, answerRecord]);
+    const nextAnswers = [...answersLog, answerRecord];
+    setAnswersLog(nextAnswers);
 
     if (isCorrect) {
       // Points calculation: 100 base + speed bonus + streak bonus
@@ -77,24 +80,26 @@ export const GameScreen: React.FC<GameScreenProps> = ({
       const currentStreak = streak + 1;
       const streakMultiplier = currentStreak >= 3 ? 1.5 : currentStreak >= 2 ? 1.2 : 1.0;
       const earned = Math.round((100 + speedBonus) * streakMultiplier);
+      const nextScore = score + earned;
 
-      setScore((prev) => prev + earned);
+      setScore(nextScore);
       setStreak(currentStreak);
       setLastEarnedPoints(earned);
       setFeedbackState('correct');
       soundManager.playCorrect();
+
+      onProgressUpdate?.(nextScore, nextAnswers, lives, false);
     } else {
+      const nextLives = lives - 1;
       setStreak(0);
       setFeedbackState('wrong');
       soundManager.playWrong();
       handleLifeLoss();
+      setLives(nextLives);
 
-      setLives((prev) => {
-        const nextLives = prev - 1;
-        return nextLives;
-      });
+      onProgressUpdate?.(score, nextAnswers, nextLives, nextLives <= 0);
     }
-  }, [currentQuestion, feedbackState, handleLifeLoss, isItalian, streak, timeLeft]);
+  }, [answersLog, currentQuestion, feedbackState, handleLifeLoss, isItalian, lives, onProgressUpdate, score, streak, timeLeft]);
 
   // Timeout handler when 120 seconds expire
   const handleTimeout = useCallback(() => {
@@ -119,10 +124,13 @@ export const GameScreen: React.FC<GameScreenProps> = ({
       explanation: explanationText
     };
 
-    setAnswersLog((prev) => [...prev, answerRecord]);
+    const nextLives = lives - 1;
+    const nextAnswers = [...answersLog, answerRecord];
+    setAnswersLog(nextAnswers);
+    setLives(nextLives);
 
-    setLives((prev) => prev - 1);
-  }, [currentQuestion, feedbackState, handleLifeLoss, isItalian]);
+    onProgressUpdate?.(score, nextAnswers, nextLives, nextLives <= 0);
+  }, [answersLog, currentQuestion, feedbackState, handleLifeLoss, isItalian, lives, onProgressUpdate, score]);
 
   // Countdown timer effect
   useEffect(() => {
